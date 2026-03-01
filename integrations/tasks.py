@@ -18,7 +18,7 @@ def create_google_meet_link_task(booking_id):
         booking = Booking.objects.select_related('slot', 'slot__admin').get(pk=booking_id)
         
         # Only create if it's a video meeting and doesn't have a link yet
-        if booking.meeting_type == 'VIDEO' and not booking.meet_link:
+        if booking.meeting_type == 'video' and not booking.meet_link:
             meet_link = GoogleMeetService.create_meet_event(
                 admin_user=booking.slot.admin,
                 summary=f'Meeting with {booking.client_name}',

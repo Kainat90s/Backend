@@ -8,6 +8,47 @@ class NotificationService:
     """Business logic for sending notifications."""
 
     @staticmethod
+    def send_booking_pending(booking):
+        """Send pending notification email to both client and admin."""
+        slot = booking.slot
+
+        # Email to client
+        client_subject = f'Booking Received (Pending) — {slot.date} at {slot.start_time}'
+        client_body = (
+            f'Hello {booking.client_name},\n\n'
+            f'We have received your booking request. It is currently PENDING approval.\n\n'
+            f'📅 Date: {slot.date}\n'
+            f'⏰ Time: {slot.start_time} – {slot.end_time}\n'
+            f'📋 Type: {booking.get_meeting_type_display()}\n'
+            f'📝 Purpose: {booking.notes or "Not specified"}\n\n'
+            f'You will receive another email once the admin confirms your meeting.\n\n'
+            f'Best regards,\nByteSlot Team'
+        )
+        NotificationService._send_email(
+            booking.client_email, booking.client_name,
+            client_subject, client_body,
+            NotificationLog.NotificationType.CONFIRMATION, booking.id, # Using confirmation log type for now or add PENDING if model allows
+        )
+
+        # Email to admin
+        admin_subject = f'New Booking Request: {booking.client_name} on {slot.date}'
+        admin_body = (
+            f'You have a new booking request waiting for approval:\n\n'
+            f'👤 Client: {booking.client_name} ({booking.client_email})\n'
+            f'📅 Date: {slot.date}\n'
+            f'⏰ Time: {slot.start_time} – {slot.end_time}\n'
+            f'📋 Type: {booking.get_meeting_type_display()}\n'
+            f'📝 Purpose: {booking.notes or "None"}\n\n'
+            f'Please log in to the dashboard to confirm or cancel this booking.'
+        )
+        if slot.admin.email:
+            NotificationService._send_email(
+                slot.admin.email, slot.admin.get_full_name(),
+                admin_subject, admin_body,
+                NotificationLog.NotificationType.CONFIRMATION, booking.id,
+            )
+
+    @staticmethod
     def send_booking_confirmation(booking):
         """Send confirmation email to both client and admin."""
         slot = booking.slot
@@ -16,10 +57,11 @@ class NotificationService:
         client_subject = f'Booking Confirmed — {slot.date} at {slot.start_time}'
         client_body = (
             f'Hello {booking.client_name},\n\n'
-            f'Your booking has been confirmed!\n\n'
+            f'Your booking has been CONFIRMED!\n\n'
             f'📅 Date: {slot.date}\n'
             f'⏰ Time: {slot.start_time} – {slot.end_time}\n'
             f'📋 Type: {booking.get_meeting_type_display()}\n'
+            f'📝 Purpose: {booking.notes or "None"}\n'
         )
         if booking.meet_link:
             client_body += f'🔗 Meeting Link: {booking.meet_link}\n'
@@ -34,15 +76,17 @@ class NotificationService:
         )
 
         # Email to admin
-        admin_subject = f'New Booking: {booking.client_name} on {slot.date}'
+        admin_subject = f'Meeting Confirmed: {booking.client_name} on {slot.date}'
         admin_body = (
-            f'You have a new booking:\n\n'
+            f'Meeting confirmed with {booking.client_name}:\n\n'
             f'👤 Client: {booking.client_name} ({booking.client_email})\n'
             f'📅 Date: {slot.date}\n'
             f'⏰ Time: {slot.start_time} – {slot.end_time}\n'
             f'📋 Type: {booking.get_meeting_type_display()}\n'
             f'📝 Notes: {booking.notes or "None"}\n'
         )
+        if booking.meet_link:
+            admin_body += f'🔗 Meeting Link: {booking.meet_link}\n'
         if slot.admin.email:
             NotificationService._send_email(
                 slot.admin.email, slot.admin.get_full_name(),
@@ -58,8 +102,9 @@ class NotificationService:
         client_subject = f'Booking Cancelled — {slot.date} at {slot.start_time}'
         client_body = (
             f'Hello {booking.client_name},\n\n'
-            f'Your booking on {slot.date} at {slot.start_time} has been cancelled.\n\n'
-            f'If this was a mistake, please rebook.\n\n'
+            f'Your booking on {slot.date} at {slot.start_time} has been CANCELLED.\n\n'
+            f'📝 Purpose: {booking.notes or "None"}\n\n'
+            f'If this was a mistake, please rebook or contact us.\n\n'
             f'Best regards,\nByteSlot Team'
         )
         NotificationService._send_email(
@@ -76,6 +121,7 @@ class NotificationService:
                 f'👤 Client: {booking.client_name}\n'
                 f'📅 Date: {slot.date}\n'
                 f'⏰ Time: {slot.start_time} – {slot.end_time}\n'
+                f'📝 Purpose: {booking.notes or "None"}\n'
             )
             NotificationService._send_email(
                 slot.admin.email, slot.admin.get_full_name(),
@@ -122,17 +168,45 @@ class NotificationService:
 
     @staticmethod
     def _send_email(to_email, to_name, subject, body, notification_type, booking_id=None):
-        """Send email and log it."""
+        """Send email and log it using dynamic SMTP settings if available."""
+        from django.core.mail import get_connection
+        from core.models import SystemSettings
+        
+        settings_db = SystemSettings.load()
+        from_email = settings_db.default_from_email or settings.DEFAULT_FROM_EMAIL
+        
+        is_sent = False
         try:
-            send_mail(
-                subject=subject,
-                message=body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[to_email],
-                fail_silently=True,
-            )
+            # Use dynamic SMTP if user/pass are provided in DB
+            if settings_db.email_host_user and settings_db.email_host_password:
+                connection = get_connection(
+                    host=settings_db.email_host,
+                    port=settings_db.email_port,
+                    username=settings_db.email_host_user,
+                    password=settings_db.email_host_password,
+                    use_tls=settings_db.email_use_tls,
+                )
+                send_mail(
+                    subject=subject,
+                    message=body,
+                    from_email=from_email,
+                    recipient_list=[to_email],
+                    fail_silently=False,
+                    connection=connection,
+                )
+            else:
+                # Fallback to .env settings
+                send_mail(
+                    subject=subject,
+                    message=body,
+                    from_email=from_email,
+                    recipient_list=[to_email],
+                    fail_silently=False,
+                )
             is_sent = True
-        except Exception:
+        except Exception as e:
+            # Log error locally for debugging (optional: could add to NotificationLog)
+            print(f"SMTP Error: {str(e)}")
             is_sent = False
 
         NotificationLog.objects.create(

@@ -38,3 +38,23 @@ class User(AbstractUser):
     @property
     def is_admin_user(self):
         return self.role == self.Role.ADMIN or self.is_superuser
+
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reset_tokens')
+    token = models.CharField(max_length=6)  # 6-digit PIN
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'accounts_password_reset_token'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Reset code for {self.user.username} - {self.token}"
+
+    def is_expired(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        # Expire after 15 minutes
+        return timezone.now() > self.created_at + timedelta(minutes=15)

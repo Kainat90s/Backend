@@ -3,6 +3,19 @@ from celery import shared_task
 from django.utils import timezone
 
 
+@shared_task(name='notifications.tasks.send_booking_pending_task')
+def send_booking_pending_task(booking_id):
+    """Async task: send booking pending notification emails."""
+    from bookings.models import Booking
+    from .services import NotificationService
+
+    try:
+        booking = Booking.objects.select_related('slot', 'slot__admin').get(pk=booking_id)
+        NotificationService.send_booking_pending(booking)
+    except Booking.DoesNotExist:
+        pass
+
+
 @shared_task(name='notifications.tasks.send_booking_confirmation_task')
 def send_booking_confirmation_task(booking_id):
     """Async task: send booking confirmation emails."""

@@ -22,6 +22,14 @@ class SystemSettings(models.Model):
         default=True,
         help_text='If True, Saturday and Sunday are marked as off days.',
     )
+    # Email / SMTP Settings
+    email_host = models.CharField(max_length=255, default='smtp.gmail.com')
+    email_port = models.PositiveIntegerField(default=587)
+    email_use_tls = models.BooleanField(default=True)
+    email_host_user = models.EmailField(blank=True, null=True)
+    email_host_password = models.CharField(max_length=255, blank=True, null=True)
+    default_from_email = models.EmailField(blank=True, null=True)
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

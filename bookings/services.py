@@ -119,13 +119,13 @@ class BookingService:
         slot.save(update_fields=['is_booked'])
 
         # Trigger background tasks
-        if meeting_type == Booking.MeetingType.VIDEO:
-            # For video meetings, the Meet link task will trigger the confirmation email after link generation
-            from integrations.tasks import create_google_meet_link_task
-            create_google_meet_link_task.delay(booking.id)
-        else:
-            # For non-video meetings, send confirmation immediately
-            BookingService._send_confirmation(booking)
+        # First, notify both that a request has been received (PENDING)
+        from notifications.tasks import send_booking_pending_task
+        transaction.on_commit(lambda: send_booking_pending_task.delay(booking.id))
+
+        # Note: We NO LONGER trigger create_google_meet_link_task here 
+        # because that should happen when the admin CONFIRMS the booking,
+        # otherwise we'd create Meet links for meetings that might get cancelled.
 
         return booking
 
@@ -167,14 +167,14 @@ class BookingService:
                 # For video meetings, use background task to generate link and notify
                 if booking.meeting_type == Booking.MeetingType.VIDEO and not booking.meet_link:
                     from integrations.tasks import create_google_meet_link_task
-                    create_google_meet_link_task.delay(booking.id)
+                    transaction.on_commit(lambda: create_google_meet_link_task.delay(booking.id))
                 else:
                     # Notify immediately if not video or link already exists
-                    BookingService._send_confirmation(booking)
+                    transaction.on_commit(lambda: BookingService._send_confirmation(booking))
 
             # Side effect: Cancelled
             if status == Booking.Status.CANCELLED:
-                BookingService._send_cancellation(booking)
+                transaction.on_commit(lambda: BookingService._send_cancellation(booking))
 
         return booking
 
@@ -187,6 +187,15 @@ class BookingService:
     def _try_create_meet_link(booking, slot):
         """DEPRECATED: Now handled via create_google_meet_link_task in integrations.tasks"""
         pass
+
+    @staticmethod
+    def _send_pending(booking):
+        """Trigger async pending notification."""
+        try:
+            from notifications.tasks import send_booking_pending_task
+            send_booking_pending_task.delay(booking.id)
+        except Exception:
+            pass
 
     @staticmethod
     def _send_confirmation(booking):

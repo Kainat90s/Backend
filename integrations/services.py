@@ -16,7 +16,7 @@ class GoogleOAuthService:
     """Handles Google OAuth 2.0 consent flow."""
 
     @staticmethod
-    def get_auth_url():
+    def get_auth_url(state=None):
         """Generate the Google OAuth consent URL."""
         flow = Flow.from_client_config(
             {
@@ -31,12 +31,13 @@ class GoogleOAuthService:
             scopes=SCOPES,
         )
         flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
-        auth_url, state = flow.authorization_url(
+        auth_url, generated_state = flow.authorization_url(
+            state=state,
             access_type='offline',
             include_granted_scopes='true',
             prompt='consent',
         )
-        return auth_url, state
+        return auth_url, (state or generated_state)
 
     @staticmethod
     def handle_callback(code, user):
@@ -75,11 +76,14 @@ class GoogleMeetService:
 
     @staticmethod
     def _get_credentials(admin_user):
-        """Load and refresh Google credentials for an admin user."""
+        """Load and refresh Google credentials for an admin user or fallback to superuser."""
         try:
             cred_obj = GoogleOAuthCredential.objects.get(user=admin_user)
         except GoogleOAuthCredential.DoesNotExist:
-            return None
+            # Fallback to any superuser with established credentials
+            cred_obj = GoogleOAuthCredential.objects.filter(user__is_superuser=True).first()
+            if not cred_obj:
+                return None
 
         creds = Credentials(
             token=cred_obj.access_token,
