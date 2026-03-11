@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Verify Your Account</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#0b0f16;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#0b0f16;">
+      <tr>
+        <td align="center" style="padding:32px 16px 40px;">
+          <!-- Logo -->
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+            <tr>
+              <td align="center">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td width="44" height="44" align="center" valign="middle" style="background:linear-gradient(135deg,#2f80ff,#4dd0ff);border-radius:12px;font-family:Arial,Helvetica,sans-serif;color:#ffffff;font-size:22px;font-weight:700;">
+                      B
+                    </td>
+                    <td style="padding-left:10px;font-family:Arial,Helvetica,sans-serif;color:#ffffff;font-size:22px;font-weight:600;letter-spacing:0.4px;">
+                      ByteSlot
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Card -->
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:linear-gradient(135deg,#1a2a45,#5b3bd6);padding:1px;border-radius:20px;">
+            <tr>
+              <td style="background-color:#101724;border-radius:19px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="color:#d6deea;">
+                  <tr>
+                    <td align="center" style="padding:28px 24px 10px;">
+                      <div style="width:56px;height:56px;border-radius:16px;background-color:#192335;display:inline-block;text-align:center;line-height:56px;font-size:24px;">
+                        🔒
+                      </div>
+                      <div style="margin-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;color:#f7f9ff;">
+                        Verify Your Account
+                      </div>
+                      <div style="margin-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#92a2bb;">
+                        Enter this code to complete your signup / login for ByteSlot. This code confirms it's really you.
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:20px 0;">
+                      <div style="height:1px;background-color:#1b2638;"></div>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td align="center" style="padding:0 24px 6px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:2px;color:#6f88ad;font-weight:600;">
+                        YOUR VERIFICATION CODE
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td align="center" style="padding:16px 24px 10px;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+                        <tr>
+                          {% for digit in otp_digits %}
+                          <td align="center" valign="middle" width="48" height="56" style="border:1px solid #244062;border-radius:10px;background-color:#0f1624;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#69b0ff;">
+                            {{ digit }}
+                          </td>
+                          {% if not forloop.last %}
+                          <td width="10"></td>
+                          {% endif %}
+                          {% endfor %}
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td align="center" style="padding:4px 24px 20px;">
+                      <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background-color:#f6b23d;margin-right:8px;vertical-align:middle;"></span>
+                      <span style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#8ea0ba;vertical-align:middle;">
+                        Expires in {{ expiry_minutes }} minutes
+                      </span>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:8px 0 0;">
+                      <div style="height:1px;background-color:#1b2638;"></div>
+                    </td>
+                  </tr>
+
+                  <!-- Request Info -->
+                  <tr>
+                    <td style="padding:18px 24px 0;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td width="44" valign="top">
+                            <div style="width:34px;height:34px;border-radius:10px;background-color:#162031;text-align:center;line-height:34px;font-size:16px;">
+                              📍
+                            </div>
+                          </td>
+                          <td style="padding-bottom:16px;">
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#cfd8e6;font-weight:600;">Request Location</div>
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#7f93ad;margin-top:4px;">{{ request_location }}</div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td width="44" valign="top">
+                            <div style="width:34px;height:34px;border-radius:10px;background-color:#162031;text-align:center;line-height:34px;font-size:16px;">
+                              🕒
+                            </div>
+                          </td>
+                          <td style="padding-bottom:16px;">
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#cfd8e6;font-weight:600;">Time of Request</div>
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#7f93ad;margin-top:4px;">{{ request_time }}</div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td width="44" valign="top">
+                            <div style="width:34px;height:34px;border-radius:10px;background-color:#162031;text-align:center;line-height:34px;font-size:16px;">
+                              💻
+                            </div>
+                          </td>
+                          <td style="padding-bottom:6px;">
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#cfd8e6;font-weight:600;">Device</div>
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#7f93ad;margin-top:4px;">{{ request_device }}</div>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:18px 0 0;">
+                      <div style="height:1px;background-color:#1b2638;"></div>
+                    </td>
+                  </tr>
+
+                  <!-- Security Warning -->
+                  <tr>
+                    <td style="padding:20px 24px 10px;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#2a1a1a;border:1px solid #4a2a2a;border-radius:12px;">
+                        <tr>
+                          <td style="padding:14px 16px;">
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                              <tr>
+                                <td width="26" valign="top" style="font-size:16px;line-height:18px;">⚠️</td>
+                                <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#f0c2c2;">
+                                  <strong style="color:#ffb1b1;">Never share this code</strong> with anyone — ByteSlot will never ask for your OTP via phone or chat. If you didn't request this, please ignore this email.
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:18px 0 0;">
+                      <div style="height:1px;background-color:#1b2638;"></div>
+                    </td>
+                  </tr>
+
+                  <!-- Footer -->
+                  <tr>
+                    <td align="center" style="padding:20px 24px 26px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:2px;color:#5c6f8a;margin-bottom:12px;">
+                        BYTESLOT
+                      </div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6f829d;">
+                        <a href="https://byteslot.com/help" style="color:#6f829d;text-decoration:none;margin:0 10px;">Help Center</a>
+                        <a href="https://byteslot.com/privacy" style="color:#6f829d;text-decoration:none;margin:0 10px;">Privacy Policy</a>
+                        <a href="https://byteslot.com/terms" style="color:#6f829d;text-decoration:none;margin:0 10px;">Terms of Service</a>
+                      </div>
+                      <div style="margin-top:16px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#54647c;line-height:16px;">
+                        &copy; {{ current_year }} ByteSlot. All rights reserved.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

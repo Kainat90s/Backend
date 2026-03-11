@@ -58,3 +58,22 @@ class PasswordResetToken(models.Model):
         from datetime import timedelta
         # Expire after 15 minutes
         return timezone.now() > self.created_at + timedelta(minutes=15)
+
+
+class RegistrationOTP(models.Model):
+    email = models.EmailField()
+    token = models.CharField(max_length=6)  # 6-digit PIN
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'accounts_registration_otp'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Registration OTP for {self.email} - {self.token}"
+
+    def is_expired(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        return timezone.now() > self.created_at + timedelta(minutes=10)

@@ -9,13 +9,48 @@ from rest_framework.views import APIView
 from .serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer,
     ChangePasswordSerializer, AdminUserSerializer,
-    RequestPasswordResetSerializer, ConfirmPasswordResetSerializer
+    RequestPasswordResetSerializer, ConfirmPasswordResetSerializer,
+    RequestRegistrationOTPSerializer
 )
-from .models import PasswordResetToken
+from .models import PasswordResetToken, RegistrationOTP
 from .services import AuthService
 import secrets
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
 from django.conf import settings
+from django.template.loader import render_to_string
+from django.utils import timezone
+
+
+def _parse_device_from_user_agent(user_agent):
+    if not user_agent:
+        return "Unknown device"
+
+    ua = user_agent.lower()
+    browser = None
+    if "edg" in ua or "edge" in ua:
+        browser = "Edge"
+    elif "chrome" in ua and "chromium" not in ua:
+        browser = "Chrome"
+    elif "firefox" in ua:
+        browser = "Firefox"
+    elif "safari" in ua and "chrome" not in ua:
+        browser = "Safari"
+
+    os_name = None
+    if "windows" in ua:
+        os_name = "Windows"
+    elif "mac os x" in ua or "macintosh" in ua:
+        os_name = "macOS"
+    elif "android" in ua:
+        os_name = "Android"
+    elif "iphone" in ua or "ipad" in ua:
+        os_name = "iOS"
+    elif "linux" in ua:
+        os_name = "Linux"
+
+    if browser and os_name:
+        return f"{browser} on {os_name}"
+    return browser or os_name or "Unknown device"
 
 
 class RegisterView(generics.CreateAPIView):
@@ -161,6 +196,93 @@ class RequestPasswordResetView(APIView):
         except Exception as e:
             print(f"Error in password reset request: {e}")
             return Response({'detail': 'Failed to send reset email. Ensure your email server settings are correct.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class RequestRegistrationOTPView(APIView):
+    """Send OTP for new user registration."""
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        serializer = RequestRegistrationOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+
+        # Generate 6-digit OTP
+        token = "".join(secrets.choice("0123456789") for _ in range(6))
+        expiry_minutes = 10
+
+        # Invalidate old tokens for this email
+        RegistrationOTP.objects.filter(email__iexact=email, is_used=False).update(is_used=True)
+
+        # Create new OTP
+        RegistrationOTP.objects.create(email=email, token=token)
+
+        subject = 'ByteSlot - Registration OTP'
+        message = (
+            "ByteSlot verification code\n\n"
+            f"Your verification code is: {token}\n"
+            f"This code expires in {expiry_minutes} minutes.\n\n"
+            "If you didn't request this, you can safely ignore this email."
+        )
+
+        request_location = (
+            request.META.get('HTTP_X_LOCATION')
+            or request.META.get('HTTP_X_GEO_CITY')
+            or request.META.get('HTTP_X_GEO_LOCATION')
+            or "Location unavailable"
+        )
+        request_time = timezone.localtime(timezone.now()).strftime("%B %d, %Y at %I:%M %p %Z")
+        request_device = _parse_device_from_user_agent(request.META.get('HTTP_USER_AGENT', ''))
+
+        html_body = render_to_string(
+            "emails/registration_otp.html",
+            {
+                "otp_digits": list(token),
+                "expiry_minutes": expiry_minutes,
+                "request_location": request_location,
+                "request_time": request_time,
+                "request_device": request_device,
+                "current_year": timezone.localtime(timezone.now()).year,
+            },
+        )
+
+        try:
+            from core.models import SystemSettings
+            from django.core.mail import get_connection
+            settings_db = SystemSettings.load()
+            from_email = settings_db.default_from_email or settings.DEFAULT_FROM_EMAIL
+
+            if settings_db.email_host_user and settings_db.email_host_password:
+                connection = get_connection(
+                    host=settings_db.email_host,
+                    port=settings_db.email_port,
+                    username=settings_db.email_host_user,
+                    password=settings_db.email_host_password,
+                    use_tls=settings_db.email_use_tls,
+                )
+                email_message = EmailMultiAlternatives(
+                    subject=subject,
+                    body=message,
+                    from_email=from_email,
+                    to=[email],
+                    connection=connection,
+                )
+                email_message.attach_alternative(html_body, "text/html")
+                email_message.send(fail_silently=False)
+            else:
+                email_message = EmailMultiAlternatives(
+                    subject=subject,
+                    body=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[email],
+                )
+                email_message.attach_alternative(html_body, "text/html")
+                email_message.send(fail_silently=False)
+        except Exception as e:
+            print(f"SMTP Error during registration OTP: {e}")
+            return Response({'detail': f'Failed to send OTP: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'detail': 'OTP sent.'}, status=status.HTTP_200_OK)
 
 class ConfirmPasswordResetView(APIView):
     """Verify PIN and set new password."""

@@ -1,25 +1,54 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from .models import RegistrationOTP
+
 User = get_user_model()
 
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True, min_length=8)
+    otp = serializers.CharField(write_only=True, max_length=6)
 
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name',
-                  'phone', 'password', 'password_confirm')
+                  'phone', 'password', 'password_confirm', 'otp')
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
 
     def validate(self, attrs):
         if attrs['password'] != attrs.pop('password_confirm'):
             raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
+
+        otp = attrs.pop('otp', None)
+        email = attrs.get('email')
+        if not otp:
+            raise serializers.ValidationError({'otp': 'OTP is required.'})
+
+        reg_otp = RegistrationOTP.objects.filter(
+            email__iexact=email,
+            token=otp,
+            is_used=False,
+        ).first()
+
+        if not reg_otp or reg_otp.is_expired():
+            raise serializers.ValidationError({'otp': 'Invalid or expired OTP.'})
+
+        self._registration_otp = reg_otp
         return attrs
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        user = User.objects.create_user(**validated_data)
+        reg_otp = getattr(self, '_registration_otp', None)
+        if reg_otp:
+            reg_otp.is_used = True
+            reg_otp.save(update_fields=['is_used'])
+        return user
 
 
 class LoginSerializer(serializers.Serializer):
@@ -88,3 +117,12 @@ class ConfirmPasswordResetSerializer(serializers.Serializer):
         if attrs['new_password'] != attrs['password_confirm']:
             raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
         return attrs
+
+
+class RequestRegistrationOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
