@@ -9,9 +9,21 @@ from decouple import config, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def env_bool(name, default=False):
+    value = config(name, default=default)
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {'1', 'true', 'yes', 'on', 'debug', 'dev', 'development'}:
+        return True
+    if normalized in {'0', 'false', 'no', 'off', 'release', 'prod', 'production'}:
+        return False
+    return bool(default)
+
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-byteslot-dev-key-change-in-production')
 
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = env_bool('DEBUG', default=True)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
@@ -72,17 +84,30 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # ---------------------------------------------------------------------------
 # Database — MS SQL Server
 # ---------------------------------------------------------------------------
-DATABASES = {
-    'default': {
-        'ENGINE': 'mssql',
-        'NAME': config('DB_NAME', default='byteslot'),
-        'HOST': config('DB_HOST', default=r'DESKTOP-8BL3MIG\SQLEXPRESS'),
-        'OPTIONS': {
-            'driver': 'ODBC Driver 17 for SQL Server',
-            'trusted_connection': 'yes',
-        },
+DB_ENGINE = config('DB_ENGINE', default='sqlite3').strip().lower()
+
+if DB_ENGINE in {'mssql', 'sql_server', 'sqlserver'}:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'mssql',
+            'NAME': config('DB_NAME', default='byteslot'),
+            'HOST': config('DB_HOST', default=r'DESKTOP-8BL3MIG\SQLEXPRESS'),
+            'PORT': config('DB_PORT', default='', cast=str),
+            'USER': config('DB_USER', default=''),
+            'PASSWORD': config('DB_PASSWORD', default=''),
+            'OPTIONS': {
+                'driver': config('DB_DRIVER', default='ODBC Driver 17 for SQL Server'),
+                'trusted_connection': config('DB_TRUSTED_CONNECTION', default='yes'),
+            },
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': config('SQLITE_NAME', default=str(BASE_DIR / 'db.sqlite3')),
+        }
+    }
 
 # ---------------------------------------------------------------------------
 # Auth

@@ -9,15 +9,29 @@ from googleapiclient.discovery import build
 
 from .models import GoogleOAuthCredential
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.events']
+LOGIN_SCOPES = [
+    'openid',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+]
+
+CALENDAR_SCOPES = [
+    'https://www.googleapis.com/auth/calendar.events',
+]
+
+DEFAULT_SCOPES = CALENDAR_SCOPES
 
 
 class GoogleOAuthService:
     """Handles Google OAuth 2.0 consent flow."""
+    LOGIN_SCOPES = LOGIN_SCOPES
+    CALENDAR_SCOPES = CALENDAR_SCOPES
+    DEFAULT_SCOPES = DEFAULT_SCOPES
 
     @staticmethod
-    def get_auth_url(state=None):
+    def get_auth_url(state=None, scopes=None, include_granted_scopes=True):
         """Generate the Google OAuth consent URL."""
+        scopes = scopes or DEFAULT_SCOPES
         flow = Flow.from_client_config(
             {
                 'web': {
@@ -28,37 +42,54 @@ class GoogleOAuthService:
                     'redirect_uris': [settings.GOOGLE_REDIRECT_URI],
                 }
             },
-            scopes=SCOPES,
+            scopes=scopes,
         )
         flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
         auth_url, generated_state = flow.authorization_url(
             state=state,
             access_type='offline',
-            include_granted_scopes='true',
+            include_granted_scopes='true' if include_granted_scopes else 'false',
             prompt='consent',
         )
         return auth_url, (state or generated_state)
 
     @staticmethod
-    def handle_callback(code, user):
-        """Exchange authorization code for tokens and save them."""
-        flow = Flow.from_client_config(
-            {
-                'web': {
-                    'client_id': settings.GOOGLE_CLIENT_ID,
-                    'client_secret': settings.GOOGLE_CLIENT_SECRET,
-                    'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
-                    'token_uri': 'https://oauth2.googleapis.com/token',
-                    'redirect_uris': [settings.GOOGLE_REDIRECT_URI],
-                }
-            },
-            scopes=SCOPES,
-        )
+    def exchange_code(code, scopes=None):
+        """Exchange authorization code for credentials."""
+        scopes = scopes or DEFAULT_SCOPES
+
+        def _build_flow(flow_scopes):
+            return Flow.from_client_config(
+                {
+                    'web': {
+                        'client_id': settings.GOOGLE_CLIENT_ID,
+                        'client_secret': settings.GOOGLE_CLIENT_SECRET,
+                        'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+                        'token_uri': 'https://oauth2.googleapis.com/token',
+                        'redirect_uris': [settings.GOOGLE_REDIRECT_URI],
+                    }
+                },
+                scopes=flow_scopes,
+            )
+
+        flow = _build_flow(scopes)
         flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
-        flow.fetch_token(code=code)
+        try:
+            flow.fetch_token(code=code)
+            return flow.credentials
+        except Exception as e:
+            # If Google returns a superset of scopes (common when user previously granted more),
+            # retry without scope validation.
+            if 'Scope has changed' in str(e):
+                fallback_flow = _build_flow(None)
+                fallback_flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
+                fallback_flow.fetch_token(code=code)
+                return fallback_flow.credentials
+            raise
 
-        credentials = flow.credentials
-
+    @staticmethod
+    def save_credentials(credentials, user):
+        """Persist Google OAuth credentials for a user."""
         GoogleOAuthCredential.objects.update_or_create(
             user=user,
             defaults={
@@ -69,6 +100,19 @@ class GoogleOAuthService:
             },
         )
         return True
+
+    @staticmethod
+    def handle_callback(code, user, scopes=None):
+        """Exchange authorization code for tokens and save them."""
+        credentials = GoogleOAuthService.exchange_code(code, scopes=scopes)
+        GoogleOAuthService.save_credentials(credentials, user)
+        return credentials
+
+    @staticmethod
+    def get_user_info(credentials):
+        """Fetch Google user profile info using OAuth credentials."""
+        service = build('oauth2', 'v2', credentials=credentials)
+        return service.userinfo().get().execute()
 
 
 class GoogleMeetService:
