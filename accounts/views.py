@@ -81,7 +81,7 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         tokens, user = AuthService.login_user(
-            serializer.validated_data['username'],
+            serializer.validated_data['email'],
             serializer.validated_data['password'],
         )
         if tokens is None:

@@ -23,4 +23,4 @@ class GoogleOAuthCredential(models.Model):
         verbose_name_plural = 'Google OAuth Credentials'
 
     def __str__(self):
-        return f'Google OAuth for {self.user.username}'
+        return f'Google OAuth for {self.user.email}'

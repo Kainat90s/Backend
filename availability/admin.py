@@ -8,7 +8,7 @@ from .models import AvailabilitySlot
 class AvailabilitySlotAdmin(admin.ModelAdmin):
     list_display = ('date', 'start_time', 'end_time', 'admin', 'is_booked', 'day_of_week')
     list_filter = ('date', 'is_booked', 'day_of_week')
-    search_fields = ('admin__username', 'admin__email')
+    search_fields = ('admin__email', 'admin__first_name', 'admin__last_name')
     ordering = ('date', 'start_time')
     readonly_fields = ('day_of_week',)
 

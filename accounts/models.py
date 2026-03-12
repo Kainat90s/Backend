@@ -27,9 +27,11 @@ class User(AbstractUser):
         verbose_name_plural = 'Users'
 
     def __str__(self):
-        return f'{self.get_full_name() or self.username} ({self.role})'
+        return f'{self.get_full_name() or self.email} ({self.role})'
 
     def save(self, *args, **kwargs):
+        if not self.username and self.email:
+            self.username = self.email
         # Auto-set role to admin for superusers
         if self.is_superuser:
             self.role = self.Role.ADMIN
@@ -51,7 +53,7 @@ class PasswordResetToken(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Reset code for {self.user.username} - {self.token}"
+        return f"Reset code for {self.user.email} - {self.token}"
 
     def is_expired(self):
         from django.utils import timezone

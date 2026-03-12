@@ -23,8 +23,8 @@ def test_booking_triggers_task():
     admin = User.objects.filter(role='admin').first()
     if not admin:
         print("No admin found, creating test admin...")
-        admin = User.objects.create(username='testadmin', role='admin', email='admin@test.com')
-        print(f"Created temporary admin user: {admin.username}")
+        admin = User.objects.create(username='admin@test.com', role='admin', email='admin@test.com')
+        print(f"Created temporary admin user: {admin.email}")
 
     from datetime import date, time
     print("Creating test availability slot...")

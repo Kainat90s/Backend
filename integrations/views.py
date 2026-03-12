@@ -7,7 +7,6 @@ from rest_framework.views import APIView
 
 from django.contrib.auth import get_user_model
 from django.core import signing
-from django.utils.text import slugify
 from accounts.services import AuthService
 from .models import GoogleOAuthCredential
 from .services import GoogleOAuthService
@@ -112,17 +111,8 @@ class GoogleOAuthCallbackView(APIView):
 
                 user = User.objects.filter(email__iexact=email).first()
                 if not user:
-                    base_username = slugify((email.split('@')[0] if email else '') or user_info.get('id', 'user'))
-                    if not base_username:
-                        base_username = f"user{user_info.get('id', '')}" or 'user'
-                    candidate = base_username
-                    suffix = 1
-                    while User.objects.filter(username=candidate).exists():
-                        suffix += 1
-                        candidate = f"{base_username}{suffix}"
-
                     user = User.objects.create_user(
-                        username=candidate,
+                        username=email,
                         email=email,
                         first_name=user_info.get('given_name', '') or '',
                         last_name=user_info.get('family_name', '') or '',
@@ -142,7 +132,7 @@ class GoogleOAuthCallbackView(APIView):
 
             try:
                 user = User.objects.get(id=user_id)
-                print(f"DEBUG: User found: {user.username}")
+                print(f"DEBUG: User found: {user.email}")
             except User.DoesNotExist:
                 print(f"DEBUG: User with ID {user_id} not found.")
                 return Response({'error': f'User with ID {user_id} no longer exists.'}, status=404)

@@ -13,7 +13,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name',
+        fields = ('id', 'email', 'first_name', 'last_name',
                   'phone', 'password', 'password_confirm', 'otp')
 
     def validate_email(self, value):
@@ -43,6 +43,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        if validated_data.get('email') and not validated_data.get('username'):
+            validated_data['username'] = validated_data['email']
         user = User.objects.create_user(**validated_data)
         reg_otp = getattr(self, '_registration_otp', None)
         if reg_otp:
@@ -52,14 +54,14 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name',
+        fields = ('id', 'email', 'first_name', 'last_name',
                   'phone', 'role', 'date_joined')
         read_only_fields = ('id', 'role', 'date_joined')
 
@@ -75,12 +77,22 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name',
+        fields = ('id', 'email', 'first_name', 'last_name',
                   'phone', 'role', 'password', 'date_joined')
         read_only_fields = ('id', 'date_joined')
 
+    def validate_email(self, value):
+        existing = User.objects.filter(email__iexact=value)
+        if self.instance:
+            existing = existing.exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
+
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        if validated_data.get('email') and not validated_data.get('username'):
+            validated_data['username'] = validated_data['email']
         user = super().create(validated_data)
         if password:
             user.set_password(password)
@@ -89,6 +101,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        if validated_data.get('email') and not validated_data.get('username'):
+            validated_data['username'] = validated_data['email']
         user = super().update(instance, validated_data)
         if password:
             user.set_password(password)
