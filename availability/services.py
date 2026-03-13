@@ -90,6 +90,28 @@ class AvailabilityService:
         return qs.order_by('date', 'start_time')
 
     @staticmethod
+    def get_available_slots_for_admin_slug(admin_slug, from_date=None, to_date=None):
+        """Return unbooked future availability slots for a specific admin slug."""
+        from django.utils import timezone
+        from accounts.models import User
+
+        admin = User.objects.filter(public_booking_slug=admin_slug, role=User.Role.ADMIN).first()
+        if not admin:
+            return AvailabilitySlot.objects.none()
+
+        qs = AvailabilitySlot.objects.filter(admin=admin, is_booked=False)
+
+        if from_date:
+            qs = qs.filter(date__gte=from_date)
+        else:
+            qs = qs.filter(date__gte=timezone.now().date())
+
+        if to_date:
+            qs = qs.filter(date__lte=to_date)
+
+        return qs.order_by('date', 'start_time')
+
+    @staticmethod
     def delete_day_slots(admin_user, date):
         """
         Delete all slots for a given date. Cancel any active bookings first.

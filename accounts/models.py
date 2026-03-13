@@ -1,5 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils.text import slugify
+import uuid
 
 
 class User(AbstractUser):
@@ -21,6 +23,14 @@ class User(AbstractUser):
     google_oauth_token = models.JSONField(null=True, blank=True)
     google_refresh_token = models.TextField(blank=True, default='')
 
+    public_booking_slug = models.SlugField(
+        max_length=64,
+        unique=True,
+        blank=True,
+        null=True,
+        help_text='Public booking link slug for admins.',
+    )
+
     class Meta:
         db_table = 'accounts_user'
         verbose_name = 'User'
@@ -35,6 +45,14 @@ class User(AbstractUser):
         # Auto-set role to admin for superusers
         if self.is_superuser:
             self.role = self.Role.ADMIN
+        if self.role == self.Role.ADMIN and not self.public_booking_slug:
+            email_prefix = self.email.split('@')[0] if self.email else ''
+            base = slugify(self.get_full_name() or email_prefix or self.username or 'admin')
+            base = base or 'admin'
+            slug = base
+            if User.objects.filter(public_booking_slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base}-{uuid.uuid4().hex[:6]}"
+            self.public_booking_slug = slug
         super().save(*args, **kwargs)
 
     @property

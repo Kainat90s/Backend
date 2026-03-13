@@ -1,5 +1,7 @@
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
 from django.conf import settings
+from django.template.loader import render_to_string
+from django.utils import timezone
 
 from .models import NotificationLog
 
@@ -24,9 +26,15 @@ class NotificationService:
             f'You will receive another email once the admin confirms your meeting.\n\n'
             f'Best regards,\nByteSlot Team'
         )
+        client_html = NotificationService._render_booking_email(
+            booking,
+            title='Booking Received (Pending)',
+            intro='We have received your booking request. It is currently pending approval.',
+            recipient_name=booking.client_name,
+        )
         NotificationService._send_email(
             booking.client_email, booking.client_name,
-            client_subject, client_body,
+            client_subject, client_body, client_html,
             NotificationLog.NotificationType.CONFIRMATION, booking.id, # Using confirmation log type for now or add PENDING if model allows
         )
 
@@ -42,9 +50,15 @@ class NotificationService:
             f'Please log in to the dashboard to confirm or cancel this booking.'
         )
         if slot.admin.email:
+            admin_html = NotificationService._render_booking_email(
+                booking,
+                title='New Booking Request',
+                intro=f'You have a new booking request from {booking.client_name}.',
+                recipient_name=slot.admin.get_full_name() or slot.admin.email,
+            )
             NotificationService._send_email(
                 slot.admin.email, slot.admin.get_full_name(),
-                admin_subject, admin_body,
+                admin_subject, admin_body, admin_html,
                 NotificationLog.NotificationType.CONFIRMATION, booking.id,
             )
 
@@ -69,9 +83,15 @@ class NotificationService:
             f'\nIf you need to cancel, please contact us.\n\n'
             f'Best regards,\nByteSlot Team'
         )
+        client_html = NotificationService._render_booking_email(
+            booking,
+            title='Booking Confirmed',
+            intro='Your booking has been confirmed.',
+            recipient_name=booking.client_name,
+        )
         NotificationService._send_email(
             booking.client_email, booking.client_name,
-            client_subject, client_body,
+            client_subject, client_body, client_html,
             NotificationLog.NotificationType.CONFIRMATION, booking.id,
         )
 
@@ -88,9 +108,15 @@ class NotificationService:
         if booking.meet_link:
             admin_body += f'🔗 Meeting Link: {booking.meet_link}\n'
         if slot.admin.email:
+            admin_html = NotificationService._render_booking_email(
+                booking,
+                title='Meeting Confirmed',
+                intro=f'You have a confirmed meeting with {booking.client_name}.',
+                recipient_name=slot.admin.get_full_name() or slot.admin.email,
+            )
             NotificationService._send_email(
                 slot.admin.email, slot.admin.get_full_name(),
-                admin_subject, admin_body,
+                admin_subject, admin_body, admin_html,
                 NotificationLog.NotificationType.CONFIRMATION, booking.id,
             )
 
@@ -107,9 +133,15 @@ class NotificationService:
             f'If this was a mistake, please rebook or contact us.\n\n'
             f'Best regards,\nByteSlot Team'
         )
+        client_html = NotificationService._render_booking_email(
+            booking,
+            title='Booking Cancelled',
+            intro='Your booking has been cancelled.',
+            recipient_name=booking.client_name,
+        )
         NotificationService._send_email(
             booking.client_email, booking.client_name,
-            client_subject, client_body,
+            client_subject, client_body, client_html,
             NotificationLog.NotificationType.CANCELLATION, booking.id,
         )
 
@@ -123,9 +155,15 @@ class NotificationService:
                 f'⏰ Time: {slot.start_time} – {slot.end_time}\n'
                 f'📝 Purpose: {booking.notes or "None"}\n'
             )
+            admin_html = NotificationService._render_booking_email(
+                booking,
+                title='Booking Cancelled',
+                intro=f'The booking with {booking.client_name} has been cancelled.',
+                recipient_name=slot.admin.get_full_name() or slot.admin.email,
+            )
             NotificationService._send_email(
                 slot.admin.email, slot.admin.get_full_name(),
-                admin_subject, admin_body,
+                admin_subject, admin_body, admin_html,
                 NotificationLog.NotificationType.CANCELLATION, booking.id,
             )
 
@@ -146,9 +184,15 @@ class NotificationService:
             body += f'🔗 Meeting Link: {booking.meet_link}\n'
         body += f'\nBest regards,\nByteSlot Team'
 
+        client_html = NotificationService._render_booking_email(
+            booking,
+            title='Meeting Reminder',
+            intro='This is a reminder that your meeting is in 1 hour.',
+            recipient_name=booking.client_name,
+        )
         NotificationService._send_email(
             booking.client_email, booking.client_name,
-            subject, body,
+            subject, body, client_html,
             NotificationLog.NotificationType.REMINDER, booking.id,
         )
 
@@ -160,14 +204,20 @@ class NotificationService:
             )
             if booking.meet_link:
                 admin_body += f'🔗 Meeting Link: {booking.meet_link}\n'
+            admin_html = NotificationService._render_booking_email(
+                booking,
+                title='Meeting Reminder',
+                intro=f'Reminder: meeting with {booking.client_name} in 1 hour.',
+                recipient_name=slot.admin.get_full_name() or slot.admin.email,
+            )
             NotificationService._send_email(
                 slot.admin.email, slot.admin.get_full_name(),
-                subject, admin_body,
+                subject, admin_body, admin_html,
                 NotificationLog.NotificationType.REMINDER, booking.id,
             )
 
     @staticmethod
-    def _send_email(to_email, to_name, subject, body, notification_type, booking_id=None):
+    def _send_email(to_email, to_name, subject, body, html_body, notification_type, booking_id=None):
         """Send email and log it using dynamic SMTP settings if available."""
         from django.core.mail import get_connection
         from core.models import SystemSettings
@@ -178,6 +228,7 @@ class NotificationService:
         is_sent = False
         try:
             # Use dynamic SMTP if user/pass are provided in DB
+            connection = None
             if settings_db.email_host_user and settings_db.email_host_password:
                 connection = get_connection(
                     host=settings_db.email_host,
@@ -186,23 +237,17 @@ class NotificationService:
                     password=settings_db.email_host_password,
                     use_tls=settings_db.email_use_tls,
                 )
-                send_mail(
-                    subject=subject,
-                    message=body,
-                    from_email=from_email,
-                    recipient_list=[to_email],
-                    fail_silently=False,
-                    connection=connection,
-                )
-            else:
-                # Fallback to .env settings
-                send_mail(
-                    subject=subject,
-                    message=body,
-                    from_email=from_email,
-                    recipient_list=[to_email],
-                    fail_silently=False,
-                )
+
+            email_message = EmailMultiAlternatives(
+                subject=subject,
+                body=body,
+                from_email=from_email,
+                to=[to_email],
+                connection=connection,
+            )
+            if html_body:
+                email_message.attach_alternative(html_body, "text/html")
+            email_message.send(fail_silently=False)
             is_sent = True
         except Exception as e:
             # Log error locally for debugging (optional: could add to NotificationLog)
@@ -217,4 +262,24 @@ class NotificationService:
             notification_type=notification_type,
             booking_id=booking_id,
             is_sent=is_sent,
+        )
+
+    @staticmethod
+    def _render_booking_email(booking, title, intro, recipient_name, cta_label=None, cta_url=None):
+        slot = booking.slot
+        return render_to_string(
+            "emails/booking_notification.html",
+            {
+                "title": title,
+                "intro": intro,
+                "recipient_name": recipient_name or "there",
+                "date": slot.date,
+                "time": f"{slot.start_time} - {slot.end_time}",
+                "meeting_type": booking.get_meeting_type_display(),
+                "notes": booking.notes or "None",
+                "meet_link": booking.meet_link,
+                "cta_label": cta_label,
+                "cta_url": cta_url,
+                "year": timezone.localtime(timezone.now()).year,
+            },
         )

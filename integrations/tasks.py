@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 @shared_task(name='integrations.tasks.create_google_meet_link_task')
-def create_google_meet_link_task(booking_id):
+def create_google_meet_link_task(booking_id, retry_count=0):
     """
     Async task to create a Google Meet link for a booking.
     Then triggers the confirmation email.
@@ -34,6 +34,8 @@ def create_google_meet_link_task(booking_id):
                 logger.info(f"Created Meet link for Booking {booking_id}: {meet_link}")
             else:
                 logger.warning(f"Failed to create Meet link for Booking {booking_id}")
+                if retry_count < 1:
+                    create_google_meet_link_task.apply_async(kwargs={'booking_id': booking_id, 'retry_count': retry_count + 1}, countdown=30)
 
         # Always trigger confirmation task after link generation attempt
         send_booking_confirmation_task.delay(booking.id)

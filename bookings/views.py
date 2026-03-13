@@ -27,6 +27,7 @@ class BookingCreateView(APIView):
             client_user=client_user,
             custom_start=serializer.validated_data.get('start_time'),
             custom_end=serializer.validated_data.get('end_time'),
+            public_slug=serializer.validated_data.get('public_slug'),
         )
 
         return Response(

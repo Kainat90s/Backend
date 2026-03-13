@@ -24,7 +24,7 @@ class BookingService:
     @staticmethod
     @transaction.atomic
     def create_booking(slot_id, client_name, client_email, meeting_type,
-                       notes='', client_user=None, custom_start=None, custom_end=None):
+                       notes='', client_user=None, custom_start=None, custom_end=None, public_slug=None):
         """Create a booking with full validation and optional slot splitting."""
 
         # 1) Check slot exists
@@ -42,6 +42,15 @@ class BookingService:
                 {'slot': 'This time slot has already been reserved.'},
                 code='slot_reserved',
             )
+
+        # 2b) Validate public booking link slug if provided
+        if public_slug:
+            slot_slug = slot.admin.public_booking_slug
+            if not slot_slug or slot_slug.lower() != str(public_slug).lower():
+                raise ValidationError(
+                    {'public_slug': 'This booking link does not match the selected slot.'},
+                    code='invalid_public_link',
+                )
 
         # 3) Check slot not on weekend
         if slot.day_of_week in (5, 6):
@@ -143,6 +152,10 @@ class BookingService:
             raise ValidationError({'booking': 'Booking not found.'})
 
         if booking.status == status:
+            if status == Booking.Status.CONFIRMED:
+                if booking.meeting_type == Booking.MeetingType.VIDEO and not booking.meet_link:
+                    from integrations.tasks import create_google_meet_link_task
+                    transaction.on_commit(lambda: create_google_meet_link_task.delay(booking.id))
             return booking
 
         old_status = booking.status

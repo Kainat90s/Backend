@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.views import APIView
 
 from .serializers import (
-    RegisterSerializer, LoginSerializer, UserSerializer,
+    RegisterSerializer, LoginSerializer, UserSerializer, ProfileSerializer,
     ChangePasswordSerializer, AdminUserSerializer,
     RequestPasswordResetSerializer, ConfirmPasswordResetSerializer,
     RequestRegistrationOTPSerializer
@@ -97,7 +97,7 @@ class LoginView(APIView):
 
 class ProfileView(generics.RetrieveUpdateAPIView):
     """Get or update the current user's profile."""
-    serializer_class = UserSerializer
+    serializer_class = ProfileSerializer
     permission_classes = (IsAuthenticated,)
 
     def get_object(self):

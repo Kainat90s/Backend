@@ -9,4 +9,5 @@ urlpatterns = [
     path('google/callback/', views.GoogleOAuthCallbackView.as_view(), name='google-oauth-callback'),
     path('google/status/', views.GoogleOAuthStatusView.as_view(), name='google-oauth-status'),
     path('google/disconnect/', views.GoogleOAuthDisconnectView.as_view(), name='google-oauth-disconnect'),
+    path('google/health/', views.GoogleOAuthHealthView.as_view(), name='google-oauth-health'),
 ]

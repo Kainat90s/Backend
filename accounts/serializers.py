@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from django.utils.text import slugify
 
 from .models import RegistrationOTP
 
@@ -62,8 +63,40 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'email', 'first_name', 'last_name',
-                  'phone', 'role', 'date_joined')
+                  'phone', 'role', 'public_booking_slug', 'date_joined')
+        read_only_fields = ('id', 'role', 'public_booking_slug', 'date_joined')
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    public_booking_slug = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'email', 'first_name', 'last_name',
+                  'phone', 'role', 'public_booking_slug', 'date_joined')
         read_only_fields = ('id', 'role', 'date_joined')
+
+    def validate_public_booking_slug(self, value):
+        request = self.context.get('request')
+        user = request.user if request else None
+
+        if value is None or value == '':
+            return None
+
+        if not user or not user.is_admin_user:
+            raise serializers.ValidationError('Only admins can set a public booking link.')
+
+        slug = slugify(value)
+        if not slug:
+            raise serializers.ValidationError('Please enter a valid slug (letters/numbers/hyphens).')
+
+        qs = User.objects.filter(public_booking_slug__iexact=slug)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError('This booking link is already in use.')
+
+        return slug
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -78,8 +111,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'email', 'first_name', 'last_name',
-                  'phone', 'role', 'password', 'date_joined')
-        read_only_fields = ('id', 'date_joined')
+                  'phone', 'role', 'public_booking_slug', 'password', 'date_joined')
+        read_only_fields = ('id', 'public_booking_slug', 'date_joined')
 
     def validate_email(self, value):
         existing = User.objects.filter(email__iexact=value)

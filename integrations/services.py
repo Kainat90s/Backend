@@ -29,9 +29,10 @@ class GoogleOAuthService:
     DEFAULT_SCOPES = DEFAULT_SCOPES
 
     @staticmethod
-    def get_auth_url(state=None, scopes=None, include_granted_scopes=True):
+    def get_auth_url(state=None, scopes=None, include_granted_scopes=True, redirect_uri=None):
         """Generate the Google OAuth consent URL."""
         scopes = scopes or DEFAULT_SCOPES
+        redirect_uri = redirect_uri or settings.GOOGLE_REDIRECT_URI
         flow = Flow.from_client_config(
             {
                 'web': {
@@ -39,12 +40,12 @@ class GoogleOAuthService:
                     'client_secret': settings.GOOGLE_CLIENT_SECRET,
                     'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
                     'token_uri': 'https://oauth2.googleapis.com/token',
-                    'redirect_uris': [settings.GOOGLE_REDIRECT_URI],
+                    'redirect_uris': [redirect_uri],
                 }
             },
             scopes=scopes,
         )
-        flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
+        flow.redirect_uri = redirect_uri
         auth_url, generated_state = flow.authorization_url(
             state=state,
             access_type='offline',
@@ -54,9 +55,18 @@ class GoogleOAuthService:
         return auth_url, (state or generated_state)
 
     @staticmethod
-    def exchange_code(code, scopes=None):
+    def exchange_code(code, scopes=None, redirect_uri=None):
         """Exchange authorization code for credentials."""
+        import os
         scopes = scopes or DEFAULT_SCOPES
+        redirect_uri = redirect_uri or settings.GOOGLE_REDIRECT_URI
+
+        full_scopes = [
+            'openid',
+            'https://www.googleapis.com/auth/userinfo.email',
+            'https://www.googleapis.com/auth/userinfo.profile',
+            'https://www.googleapis.com/auth/calendar.events',
+        ]
 
         def _build_flow(flow_scopes):
             return Flow.from_client_config(
@@ -66,14 +76,16 @@ class GoogleOAuthService:
                         'client_secret': settings.GOOGLE_CLIENT_SECRET,
                         'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
                         'token_uri': 'https://oauth2.googleapis.com/token',
-                        'redirect_uris': [settings.GOOGLE_REDIRECT_URI],
+                        'redirect_uris': [redirect_uri],
                     }
                 },
                 scopes=flow_scopes,
             )
 
         flow = _build_flow(scopes)
-        flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
+        flow.redirect_uri = redirect_uri
+        prev_relax = os.environ.get('OAUTHLIB_RELAX_TOKEN_SCOPE')
+        os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
         try:
             flow.fetch_token(code=code)
             return flow.credentials
@@ -81,11 +93,18 @@ class GoogleOAuthService:
             # If Google returns a superset of scopes (common when user previously granted more),
             # retry without scope validation.
             if 'Scope has changed' in str(e):
-                fallback_flow = _build_flow(None)
-                fallback_flow.redirect_uri = settings.GOOGLE_REDIRECT_URI
+                if getattr(flow, 'credentials', None) and flow.credentials.token:
+                    return flow.credentials
+                fallback_flow = _build_flow(full_scopes)
+                fallback_flow.redirect_uri = redirect_uri
                 fallback_flow.fetch_token(code=code)
                 return fallback_flow.credentials
             raise
+        finally:
+            if prev_relax is None:
+                os.environ.pop('OAUTHLIB_RELAX_TOKEN_SCOPE', None)
+            else:
+                os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = prev_relax
 
     @staticmethod
     def save_credentials(credentials, user):
@@ -102,9 +121,9 @@ class GoogleOAuthService:
         return True
 
     @staticmethod
-    def handle_callback(code, user, scopes=None):
+    def handle_callback(code, user, scopes=None, redirect_uri=None):
         """Exchange authorization code for tokens and save them."""
-        credentials = GoogleOAuthService.exchange_code(code, scopes=scopes)
+        credentials = GoogleOAuthService.exchange_code(code, scopes=scopes, redirect_uri=redirect_uri)
         GoogleOAuthService.save_credentials(credentials, user)
         return credentials
 
@@ -121,13 +140,36 @@ class GoogleMeetService:
     @staticmethod
     def _get_credentials(admin_user):
         """Load and refresh Google credentials for an admin user or fallback to superuser."""
+        from google.auth.exceptions import RefreshError
+
         try:
             cred_obj = GoogleOAuthCredential.objects.get(user=admin_user)
         except GoogleOAuthCredential.DoesNotExist:
+            if admin_user.email:
+                cred_obj = GoogleOAuthCredential.objects.filter(user__email__iexact=admin_user.email).first()
+                if cred_obj and cred_obj.user_id != admin_user.id:
+                    cred_obj.user = admin_user
+                    cred_obj.save(update_fields=['user', 'updated_at'])
+            else:
+                cred_obj = None
+
+            if not cred_obj:
+                calendar_creds = [
+                    c for c in GoogleOAuthCredential.objects.all()
+                    if 'https://www.googleapis.com/auth/calendar.events' in (c.scopes or [])
+                ]
+                if len(calendar_creds) == 1:
+                    cred_obj = calendar_creds[0]
+
             # Fallback to any superuser with established credentials
-            cred_obj = GoogleOAuthCredential.objects.filter(user__is_superuser=True).first()
+            if not cred_obj:
+                cred_obj = GoogleOAuthCredential.objects.filter(user__is_superuser=True).first()
             if not cred_obj:
                 return None
+
+        required_scope = 'https://www.googleapis.com/auth/calendar.events'
+        if required_scope not in (cred_obj.scopes or []):
+            return None
 
         creds = Credentials(
             token=cred_obj.access_token,
@@ -141,7 +183,12 @@ class GoogleMeetService:
         # Auto-refresh if expired
         if creds.expired and creds.refresh_token:
             from google.auth.transport.requests import Request
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                # Stored refresh token is invalid or revoked. Force re-connect.
+                cred_obj.delete()
+                return None
 
             # Save refreshed token
             cred_obj.access_token = creds.token

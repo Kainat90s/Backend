@@ -21,6 +21,7 @@ class BookingCreateSerializer(serializers.Serializer):
     client_name = serializers.CharField(max_length=150)
     client_email = serializers.EmailField()
     meeting_type = serializers.ChoiceField(choices=Booking.MeetingType.choices)
+    public_slug = serializers.SlugField(required=False, allow_blank=True, allow_null=True)
     start_time = serializers.TimeField(required=False, allow_null=True)
     end_time = serializers.TimeField(required=False, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True, default='')

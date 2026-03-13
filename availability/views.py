@@ -2,10 +2,12 @@ from rest_framework import generics, status, viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 
 from .models import AvailabilitySlot
 from .serializers import AvailabilitySlotSerializer, AvailabilitySlotCreateSerializer
 from .services import AvailabilityService
+from accounts.models import User
 
 
 from django.utils.decorators import method_decorator
@@ -25,6 +27,28 @@ class AvailabilitySlotListView(generics.ListAPIView):
         from_date = self.request.query_params.get('from_date')
         to_date = self.request.query_params.get('to_date')
         return AvailabilityService.get_available_slots(from_date, to_date)
+
+
+class PublicAvailabilityBySlugView(generics.ListAPIView):
+    """List available slots for a specific admin public link."""
+    serializer_class = AvailabilitySlotSerializer
+    permission_classes = (AllowAny,)
+    pagination_class = None
+
+    @method_decorator(cache_page(60 * 1)) # Cache for 1 minute
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    def get_queryset(self):
+        from_date = self.request.query_params.get('from_date')
+        to_date = self.request.query_params.get('to_date')
+        slug = self.kwargs.get('slug')
+
+        admin_exists = User.objects.filter(public_booking_slug=slug, role=User.Role.ADMIN).exists()
+        if not admin_exists:
+            raise NotFound('Booking link not found.')
+
+        return AvailabilityService.get_available_slots_for_admin_slug(slug, from_date, to_date)
 
 
 class AvailabilitySlotAdminView(generics.ListCreateAPIView):
