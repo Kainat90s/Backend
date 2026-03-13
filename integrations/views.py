@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from django.contrib.auth import get_user_model
 from django.core import signing
+from django.utils.crypto import get_random_string
 from accounts.services import AuthService
 from .models import GoogleOAuthCredential
 from .services import GoogleOAuthService
@@ -129,7 +130,7 @@ class GoogleOAuthCallbackView(APIView):
                         email=email,
                         first_name=user_info.get('given_name', '') or '',
                         last_name=user_info.get('family_name', '') or '',
-                        password=User.objects.make_random_password(),
+                        password=get_random_string(32),
                     )
 
                 # Do not overwrite calendar OAuth credentials with login-only scopes
